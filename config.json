@@ -1,0 +1,21 @@
+{
+  "portfolio": {
+    "initial_cash": 1000000,
+    "positions": {}
+  },
+  "stocks": ["688318", "688210", "603220", "600255", "301236", "515980"],
+  "monitor": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "push_on_action_only": true,
+    "feishu_webhook": ""
+  },
+  "strategies": {
+    "ma_cross": {"short_ma": 5, "long_ma": 20},
+    "macd": {"fast": 12, "slow": 26, "signal": 9},
+    "rsi": {"period": 14, "oversold": 30, "overbought": 70},
+    "bollinger": {"period": 20, "std_dev": 2},
+    "kdj": {"n": 9, "m1": 3, "m2": 3}
+  },
+  "default_strategy": "ma_cross"
+}

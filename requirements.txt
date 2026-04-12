@@ -1,0 +1,10 @@
+# A股量化系统 Python依赖
+# 升级容器后运行: pip install -r requirements.txt
+
+akshare==1.18.54
+pandas>=2.0.0
+numpy>=2.0.0
+matplotlib>=3.0.0
+Pillow>=10.0.0
+requests>=2.25.0
+paramiko>=3.0.0
