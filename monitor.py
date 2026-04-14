@@ -7,7 +7,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 from simulator import StockSimulator
 from data_fetcher import get_stock_daily, get_realtime_quote
@@ -20,7 +20,9 @@ class QuantMonitor:
         self.load_config()
 
         self.simulator = StockSimulator(self.config_path)
-        self.strategy_name = self.config.get('default_strategy', 'ma_cross')
+        self.default_strategy = self.config.get('default_strategy', 'kdj')
+        self.per_stock_strategy = self.config.get('per_stock_strategy', {})
+        self.strategy_name = self.default_strategy
 
         # 从config读取监控配置
         monitor_cfg = self.config.get('monitor', {})
@@ -32,6 +34,10 @@ class QuantMonitor:
     def load_config(self):
         with open(self.config_path, 'r') as f:
             self.config = json.load(f)
+
+    def get_strategy_for_stock(self, code: str) -> str:
+        """获取单个股票适用的策略（优先per-stock，其次默认）"""
+        return self.per_stock_strategy.get(code, self.default_strategy)
 
     def get_strategy_params(self, strategy_name: str) -> dict:
         """从配置中获取策略参数"""
@@ -45,11 +51,13 @@ class QuantMonitor:
             return {'code': code, 'error': '获取数据失败'}
 
         latest_price = df.iloc[-1]['close']
+        # 每个股票用自己的策略
+        strategy_name = self.get_strategy_for_stock(code)
 
         try:
             from strategies import get_strategy
-            params = self.get_strategy_params(self.strategy_name)
-            strategy = get_strategy(self.strategy_name, **params)
+            params = self.get_strategy_params(strategy_name)
+            strategy = get_strategy(strategy_name, **params)
             signal = strategy.get_latest_signal(df)
         except Exception as e:
             # 降级：使用简单均线交叉
@@ -71,7 +79,7 @@ class QuantMonitor:
             'code': code,
             'latest_price': latest_price,
             'signal': signal,
-            'strategy': self.strategy_name
+            'strategy': strategy_name
         }
 
     def analyze_all(self) -> Dict:
@@ -105,11 +113,14 @@ class QuantMonitor:
             action_signals_only: 是否只显示需要操作的信号
         """
         analysis = self.analyze_all()
+        
+        # 北京时间
+        now_bj = datetime.utcnow() + timedelta(hours=8)
+        
         lines = [
             f"📊 A股量化信号报告",
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"📈 策略: {self.strategy_name}",
-            f"",
+            f"⏰ {now_bj.strftime('%Y-%m-%d %H:%M:%S')} (北京时间)",
+            f"📈 全局策略: {self.default_strategy}",
         ]
 
         status = self.simulator.get_status()
@@ -130,6 +141,7 @@ class QuantMonitor:
                     continue
                 has_action = True
                 price = result['latest_price']
+                strat = result.get('strategy', self.default_strategy)
 
                 if sig['action'] == 'buy':
                     emoji = '🟢'
@@ -139,7 +151,7 @@ class QuantMonitor:
                     action_text = '卖出'
 
                 extras = ', '.join(f"{k}={v}" for k, v in sig.items() if k not in ('action', 'price', 'date'))
-                lines.append(f"   {code}: {emoji} {action_text} @ ¥{price:.2f} {extras}")
+                lines.append(f"   {code}: {emoji} {action_text} @ ¥{price:.2f} [策略:{strat}] {extras}")
 
                 if code in status['positions']:
                     pos = status['positions'][code]
@@ -157,6 +169,7 @@ class QuantMonitor:
 
                 sig = result['signal']
                 price = result['latest_price']
+                strat = result.get('strategy', self.default_strategy)
 
                 if sig['action'] == 'buy':
                     emoji = '🟢'
@@ -168,7 +181,7 @@ class QuantMonitor:
                     emoji = '⚪'
                     action_text = '持有'
 
-                lines.append(f"   {code}: {emoji} {action_text} @ ¥{price:.2f}")
+                lines.append(f"   {code}: {emoji} {action_text} @ ¥{price:.2f} [策略:{strat}]")
 
                 # 如果有持仓，显示成本和盈亏
                 if code in status['positions']:
@@ -196,17 +209,56 @@ class QuantMonitor:
             return False
 
     def run_once(self, push: bool = True) -> str:
-        """运行一次分析"""
+        """运行一次分析：检查信号 + 执行交易 + 生成报告"""
         action_signals = self.check_signals()
         
+        # 执行交易（模拟自动下单）
+        executed_trades = []
+        for code, result in action_signals.items():
+            sig = result['signal']
+            price = result['latest_price']
+            
+            if sig['action'] == 'buy':
+                # 先检查是否已持有这只股票
+                status = self.simulator.get_status()
+                if code in status['positions']:
+                    print(f"[跳过] {code} 已持仓，无需买入")
+                    continue
+                
+                # 用一半资金买入（留一半现金防风险）
+                trade_result = self.simulator.buy(
+                    code=code,
+                    price=price,
+                    shares=None  # simulator内部自动计算
+                )
+                if trade_result['success']:
+                    trade_result['exec_price'] = price
+                    executed_trades.append(trade_result)
+                    print(f"[成交] 买入 {code} {trade_result['shares']}股 @ ¥{price:.2f}")
+                else:
+                    print(f"[拒绝] 买入 {code} 失败: {trade_result['reason']}")
+            
+            elif sig['action'] == 'sell':
+                # 全部卖出
+                trade_result = self.simulator.sell(
+                    code=code,
+                    price=price,
+                    shares=None  # 全部卖出
+                )
+                if trade_result['success']:
+                    trade_result['exec_price'] = price
+                    executed_trades.append(trade_result)
+                    print(f"[成交] 卖出 {code} {trade_result['shares']}股 @ ¥{price:.2f}")
+                else:
+                    print(f"[拒绝] 卖出 {code} 失败: {trade_result['reason']}")
+        
+        # 生成报告
         if self.push_on_action_only and action_signals:
-            # 只推送有动作的信号
             report = self.generate_report(action_signals_only=True)
             print(report)
             if push:
                 self.push_to_feishu(report)
         elif not self.push_on_action_only:
-            # 推送完整报告
             report = self.generate_report()
             print(report)
             if push:

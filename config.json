@@ -3,19 +3,60 @@
     "initial_cash": 1000000,
     "positions": {}
   },
-  "stocks": ["688318", "688210", "603220", "600255", "301236", "515980"],
+  "stocks": [
+    "688318",
+    "688210",
+    "603220",
+    "600255",
+    "301236",
+    "515980"
+  ],
   "monitor": {
     "enabled": true,
     "interval_seconds": 300,
     "push_on_action_only": true,
-    "feishu_webhook": ""
+    "feishu_webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/bbba684b-d853-4835-a408-06a60c1dbf16"
   },
   "strategies": {
-    "ma_cross": {"short_ma": 5, "long_ma": 20},
-    "macd": {"fast": 12, "slow": 26, "signal": 9},
-    "rsi": {"period": 14, "oversold": 30, "overbought": 70},
-    "bollinger": {"period": 20, "std_dev": 2},
-    "kdj": {"n": 9, "m1": 3, "m2": 3}
+    "ma_cross": {
+      "short_ma": 5,
+      "long_ma": 20
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "rsi": {
+      "period": 14,
+      "oversold": 30,
+      "overbought": 70
+    },
+    "bollinger": {
+      "period": 20,
+      "std_dev": 2
+    },
+    "kdj": {
+      "n": 9,
+      "m1": 3,
+      "m2": 3
+    },
+    "momentum": {
+      "short_window": 10,
+      "long_window": 20,
+      "min_momentum": 5
+    },
+    "rsi_volume": {
+      "rsi_period": 14,
+      "oversold": 35,
+      "overbought": 70,
+      "vol_threshold": 1.3
+    }
   },
-  "default_strategy": "ma_cross"
+  "default_strategy": "kdj",
+  "per_stock_strategy": {
+    "603220": "kdj",
+    "301236": "momentum",
+    "688318": "bollinger"
+  }
 }

@@ -87,3 +87,7 @@ echo "=========================================="
 echo ""
 echo "✓ 所有依赖就绪，升级后无需重装！"
 echo ""
+
+# 启动A股量化守护进程
+$VENV/bin/python3 -u $WORKSPACE/stock_quant/daemon.py >> $WORKSPACE/stock_quant/logs/daemon.log 2>&1 &
+echo "  ✓ A股量化守护进程已启动 (PID=$!)"
